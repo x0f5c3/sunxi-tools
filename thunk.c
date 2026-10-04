@@ -42,5 +42,5 @@ thunk_t *fel_to_spl_thunk(soc_info_t *soc_info)
 		return &fel_to_spl_thunk_v7;
 	if (soc_info->arch_version == 5)
 		return &fel_to_spl_thunk_v5;
-	return NULL;
+	return &fel_to_spl_thunk_v7;
 }

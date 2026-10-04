@@ -223,6 +223,8 @@ static bool spi0_init(feldev_handle *dev)
 		 */
 		/* Set PLL6 to 600MHz */
 		writel(0x80041400, 0x01c20028);
+		while (!(readl(0x01c20028) & 0x10000000))
+			;
 		/* PLL6:AHB:APB = 6:2:1 */
 		writel(0x00003180, 0x01c20054);
 		/* divide by 32 */
@@ -417,8 +419,9 @@ void aw_fel_spiflash_write(feldev_handle *dev,
 
 	spi_flash_info_t *flash_info = &default_spi_flash_info; /* FIXME */
 
-	if ((offset % flash_info->small_erase_size) != 0) {
-		fprintf(stderr, "aw_fel_spiflash_write: 'addr' must be %d bytes aligned\n",
+	if ((offset % flash_info->small_erase_size) != 0 ||
+	    (len % flash_info->small_erase_size) != 0) {
+		fprintf(stderr, "aw_fel_spiflash_write: 'addr' and length must be %u bytes aligned\n",
 		        flash_info->small_erase_size);
 		exit(1);
 	}

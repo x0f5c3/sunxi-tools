@@ -283,11 +283,11 @@ void soc_detection_init(void)
 	} else {
 		u32 reg;
 		/*
-		 * This register is GICD_IIDR on H6 but unmapped according known SoCs'
+		 * This register is GICD_IIDR on H6 but unmapped according to known SoCs'
 		 * user manuals.
 		 */
 		reg = readl(0x03021004);
-		if (reg & 0xfff == 0x43b) /* Found GICv2 here, so it's a H6 */
+		if ((reg & 0xfff) == 0x43b) /* Found GICv2 here, so it's a H6 */
 			reg = H6_VER_REG;
 		else
 			reg = VER_REG;

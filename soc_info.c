@@ -97,7 +97,7 @@ sram_swap_buffers a80_sram_swap_buffers[] = {
 /*
  * H6 has 32KiB of SRAM A at 0x20000 and a large SRAM C at 0x28000. SRAM A
  * and SRAM C reside in the address space back-to-back without any gaps, thus
- * representing a singe large contiguous area. Everything is the same as on
+ * representing a single large contiguous area. Everything is the same as on
  * A10/A13/A20, but just shifted by 0x20000.
  */
 sram_swap_buffers h6_sram_swap_buffers[] = {
@@ -115,7 +115,7 @@ sram_swap_buffers h6_sram_swap_buffers[] = {
  * with A10/A13/A20.
  * Unfortunately the SRAM layout of F1C100s is not documented at all, so
  * we can only try by r/w under FEL mode.
- * The result is that there's a contingous SRAM zone from 0x8800 to 0xb5ff.
+ * The result is that there's a contiguous SRAM zone from 0x8800 to 0xb5ff.
  */
 sram_swap_buffers f1c100s_sram_swap_buffers[] = {
 	/* 0x1C00-0x1FFF (IRQ stack) */

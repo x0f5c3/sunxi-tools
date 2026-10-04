@@ -14,6 +14,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#ifndef _SUNXI_TOOLS_THUNK_H
+#define _SUNXI_TOOLS_THUNK_H
+
 #include <stdint.h>
 #include <sys/types.h>
 
@@ -25,3 +28,5 @@ typedef struct {
 } thunk_t;
 
 thunk_t *fel_to_spl_thunk(soc_info_t *soc_info);
+
+#endif /* _SUNXI_TOOLS_THUNK_H */

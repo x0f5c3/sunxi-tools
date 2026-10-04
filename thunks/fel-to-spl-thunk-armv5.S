@@ -22,7 +22,7 @@
  */
 
 /*************************************************************************/
-/* Usage instructions: "ruby -x fel-to-spl-thunk.S > fel-to-spl-thunk.h" */
+/* Usage instructions: "ruby -x fel-to-spl-thunk-armv5.S > fel-to-spl-thunk-armv5.h" */
 /*************************************************************************/
 
 /* Open a comment for gas.

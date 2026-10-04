@@ -114,7 +114,7 @@ static void inline __attribute((always_inline)) spi_data_transfer(void *buf,
 		}
 	}
 
-	/* Handle the trailing part pf the data */
+	/* Handle the trailing part of the data */
 	rxbuf8 = (u8 *)rxbuf;
 	txbuf8 = (u8 *)txbuf;
 	while (rxsize >= 1) {
