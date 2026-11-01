@@ -84,7 +84,9 @@ end
 
 `#{toolchain}size -A #{ARGV[0]}.o`.each_line do |l|
   if l =~ /(\S+)\s+(\S+)/
-    if ($1 == ".data" || $1 == ".bss" || $1 == ".rodata") && $2.to_i > 0
+    section = $1
+    section_size = $2.to_i
+    if section =~ /\A\.(?:data|bss|rodata)(?:\.|$)/ && section_size > 0
       abort "Can't have non-empty '.data', '.bss' or '.rodata' section."
     end
   end
@@ -108,7 +110,12 @@ unless sourcefile =~ /#{function_name}\((.*?)\)/m
 end
 
 # Extract the function argument names
-function_args = $1.split(",").map {|a| if a.strip =~ /([^\*\s]+)$/ then $1 end }
+function_args = $1.strip
+function_args = if function_args.empty? || function_args == "void"
+                  []
+                else
+                  function_args.split(",").map {|a| if a.strip =~ /([^\*\s]+)$/ then $1 end }
+                end
 
 # Check if there is any return value
 have_retval = !(sourcefile =~ /void\s+#{function_name}/m)
@@ -122,11 +129,16 @@ out = File.open(ARGV[1], "w")
 out.printf("/* Automatically generated, do not edit! */\n\n")
 
 out.printf("static void\n")
-funcdecl = sprintf("aw_fel_remotefunc_prepare_#{function_name}(feldev_handle *dev,")
-out.printf("%s\n", funcdecl)
-out.printf("%s", function_args.map {|a|
-           " " * funcdecl.index("(") + " uint32_t              " + a }.join(",\n"))
-out.printf(")\n{\n")
+funcdecl = sprintf("aw_fel_remotefunc_prepare_#{function_name}(feldev_handle *dev")
+funcdecl += "," unless function_args.empty?
+if function_args.empty?
+  out.printf("%s)\n{\n", funcdecl)
+else
+  out.printf("%s\n", funcdecl)
+  out.printf("%s", function_args.map {|a|
+             " " * funcdecl.index("(") + " uint32_t              " + a }.join(",\n"))
+  out.printf(")\n{\n")
+end
 
 out.printf("\tstatic uint8_t arm_code[] = {\n")
 `#{toolchain}objdump -d #{ARGV[0]}.o`.each_line {|l|
@@ -140,10 +152,15 @@ out.printf("\tstatic uint8_t arm_code[] = {\n")
 }
 out.printf("\t};\n")
 
-out.printf("\tuint32_t args[] = {\n\t\t")
-out.printf("%s\n\t};\n", function_args.join(",\n\t\t"))
+if function_args.empty?
+  out.printf("\taw_fel_remotefunc_prepare(dev, %d, arm_code, sizeof(arm_code), 0, 0);\n",
+             stack_usage[0][:stack_usage])
+else
+  out.printf("\tuint32_t args[] = {\n\t\t")
+  out.printf("%s\n\t};\n", function_args.join(",\n\t\t"))
 
-out.printf("\taw_fel_remotefunc_prepare(dev, %d, arm_code, sizeof(arm_code), %d, args);\n",
-           stack_usage[0][:stack_usage], function_args.size)
+  out.printf("\taw_fel_remotefunc_prepare(dev, %d, arm_code, sizeof(arm_code), %d, args);\n",
+             stack_usage[0][:stack_usage], function_args.size)
+end
 
 out.printf("}\n")

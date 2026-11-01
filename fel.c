@@ -830,7 +830,7 @@ void aw_fel_write_and_execute_spl(feldev_handle *dev, uint8_t *buf, size_t len)
 
 	if (thunk_size > soc_info->thunk_size)
 		pr_fatal("SPL: bad thunk size (need %d, have %d)\n",
-			 (int)sizeof(fel_to_spl_thunk), soc_info->thunk_size);
+			 (int)thunk_size, soc_info->thunk_size);
 
 	thunk_buf = malloc(thunk_size);
 	memcpy(thunk_buf, thunk->code, thunk->size);

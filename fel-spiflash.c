@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "common.h"
 #include "fel_lib.h"
 #include "progress.h"
 
@@ -87,6 +88,8 @@ void fel_writel(feldev_handle *dev, uint32_t addr, uint32_t val);
 #define SUN4I_CTL_XCH               (1 << 10)
 
 #define SUN6I_TCR_XCH               (1 << 31)
+
+#define SPI_FLASH_ADDRESS_LIMIT     (1U << 24)
 
 static uint32_t spi0_base;
 
@@ -222,7 +225,7 @@ static bool spi0_init(feldev_handle *dev)
 		 * configure AHB clock at 200MHz.
 		 */
 		/* Set PLL6 to 600MHz */
-		writel(0x80041400, 0x01c20028);
+		writel(0x80041800, 0x01c20028);
 		while (!(readl(0x01c20028) & 0x10000000))
 			;
 		/* PLL6:AHB:APB = 6:2:1 */
@@ -232,6 +235,13 @@ static bool spi0_init(feldev_handle *dev)
 	}
 
 	return true;
+}
+
+static void check_spi_flash_address_range(uint32_t offset, size_t len)
+{
+	if (offset > SPI_FLASH_ADDRESS_LIMIT ||
+	    len > SPI_FLASH_ADDRESS_LIMIT - offset)
+		pr_fatal("SPI flash addresses above 0x00ffffff are not supported\n");
 }
 
 /*
@@ -289,6 +299,10 @@ void aw_fel_spiflash_read(feldev_handle *dev,
 			  uint32_t offset, void *buf, size_t len,
 			  progress_cb_t progress)
 {
+	check_spi_flash_address_range(offset, len);
+	if (!spi0_init(dev))
+		pr_fatal("SPI flash is not supported on this SoC\n");
+
 	soc_info_t *soc_info = dev->soc_info;
 	void *backup = backup_sram(dev);
 	uint8_t *buf8 = (uint8_t *)buf;
@@ -299,7 +313,6 @@ void aw_fel_spiflash_read(feldev_handle *dev,
 	memset(cmdbuf, 0, max_chunk_size);
 	aw_fel_write(dev, cmdbuf, soc_info->spl_addr, max_chunk_size);
 
-	spi0_init(dev);
 	prepare_spi_batch_data_transfer(dev, soc_info->spl_addr);
 
 	progress_start(progress, len);
@@ -339,10 +352,10 @@ void aw_fel_spiflash_read(feldev_handle *dev,
 
 #define CMD_WRITE_ENABLE 0x06
 
-void aw_fel_spiflash_write_helper(feldev_handle *dev,
-				  uint32_t offset, void *buf, size_t len,
-				  size_t erase_size, uint8_t erase_cmd,
-				  size_t program_size, uint8_t program_cmd)
+static bool aw_fel_spiflash_write_helper(feldev_handle *dev,
+					 uint32_t offset, void *buf, size_t len,
+					 size_t erase_size, uint8_t erase_cmd,
+					 size_t program_size, uint8_t program_cmd)
 {
 	soc_info_t *soc_info = dev->soc_info;
 	uint8_t *buf8 = (uint8_t *)buf;
@@ -403,22 +416,28 @@ void aw_fel_spiflash_write_helper(feldev_handle *dev,
 
 		/* Flush */
 		aw_fel_write(dev, cmdbuf, soc_info->spl_addr, cmd_idx);
-		aw_fel_remotefunc_execute(dev, NULL);
+		uint32_t result;
 		cmd_idx = 0;
+		if (!aw_fel_remotefunc_execute(dev, &result) || result) {
+			free(cmdbuf);
+			return false;
+		}
 	}
 
 	free(cmdbuf);
+	return true;
 }
 
 void aw_fel_spiflash_write(feldev_handle *dev,
 			   uint32_t offset, void *buf, size_t len,
 			   progress_cb_t progress)
 {
-	void *backup = backup_sram(dev);
 	uint8_t *buf8 = (uint8_t *)buf;
+	void *backup;
 
 	spi_flash_info_t *flash_info = &default_spi_flash_info; /* FIXME */
 
+	check_spi_flash_address_range(offset, len);
 	if ((offset % flash_info->small_erase_size) != 0 ||
 	    (len % flash_info->small_erase_size) != 0) {
 		fprintf(stderr, "aw_fel_spiflash_write: 'addr' and length must be %u bytes aligned\n",
@@ -426,7 +445,10 @@ void aw_fel_spiflash_write(feldev_handle *dev,
 		exit(1);
 	}
 
-	spi0_init(dev);
+	if (!spi0_init(dev))
+		pr_fatal("SPI flash is not supported on this SoC\n");
+
+	backup = backup_sram(dev);
 
 	progress_start(progress, len);
 	while (len > 0) {
@@ -437,18 +459,24 @@ void aw_fel_spiflash_write(feldev_handle *dev,
 			write_count = flash_info->small_erase_size;
 			if (write_count > len)
 				write_count = len;
-			aw_fel_spiflash_write_helper(dev, offset, buf8,
+			if (!aw_fel_spiflash_write_helper(dev, offset, buf8,
 				write_count,
 				flash_info->small_erase_size, flash_info->small_erase_cmd,
-				flash_info->program_size, flash_info->program_cmd);
+				flash_info->program_size, flash_info->program_cmd)) {
+				restore_sram(dev, backup);
+				pr_fatal("SPI flash write timed out\n");
+			}
 		} else {
 			write_count = flash_info->large_erase_size;
 			if (write_count > len)
 				write_count = len;
-			aw_fel_spiflash_write_helper(dev, offset, buf8,
+			if (!aw_fel_spiflash_write_helper(dev, offset, buf8,
 				write_count,
 				flash_info->large_erase_size, flash_info->large_erase_cmd,
-				flash_info->program_size, flash_info->program_cmd);
+				flash_info->program_size, flash_info->program_cmd)) {
+				restore_sram(dev, backup);
+				pr_fatal("SPI flash write timed out\n");
+			}
 		}
 
 		len    -= write_count;
@@ -468,9 +496,12 @@ void aw_fel_spiflash_info(feldev_handle *dev)
 	soc_info_t *soc_info = dev->soc_info;
 	const char *manufacturer;
 	unsigned char buf[] = { 0, 4, 0x9F, 0, 0, 0, 0x0, 0x0 };
-	void *backup = backup_sram(dev);
+	void *backup;
 
-	spi0_init(dev);
+	if (!spi0_init(dev))
+		pr_fatal("SPI flash is not supported on this SoC\n");
+
+	backup = backup_sram(dev);
 	aw_fel_write(dev, buf, soc_info->spl_addr, sizeof(buf));
 	prepare_spi_batch_data_transfer(dev, soc_info->spl_addr);
 	aw_fel_remotefunc_execute(dev, NULL);

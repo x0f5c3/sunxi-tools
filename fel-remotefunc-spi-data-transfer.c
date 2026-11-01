@@ -24,6 +24,8 @@
 typedef unsigned int  u32;
 typedef unsigned char u8;
 
+#define SPI_STATUS_POLL_LIMIT	100000
+
 #define readl(addr)		(*((volatile u32 *)(addr)))
 #define writel(v, addr)		(*((volatile u32 *)(addr)) = (u32)(v))
 #define readb(addr)		(*((volatile u8 *)(addr)))
@@ -135,26 +137,27 @@ static void inline __attribute((always_inline)) spi_data_transfer(void *buf,
 	asm volatile("msr cpsr_c, %0" :: "r" (cpsr));
 }
 
-void spi_batch_data_transfer(u8   *buf,
-			     void *spi_ctl_reg,
-			     u32   spi_ctl_xch_bitmask,
-			     void *spi_fifo_reg,
-			     void *spi_tx_reg,
-			     void *spi_rx_reg,
-			     void *spi_bc_reg,
-			     void *spi_tc_reg,
-			     void *spi_bcc_reg)
+u32 spi_batch_data_transfer(u8   *buf,
+			    void *spi_ctl_reg,
+			    u32   spi_ctl_xch_bitmask,
+			    void *spi_fifo_reg,
+			    void *spi_tx_reg,
+			    void *spi_rx_reg,
+			    void *spi_bc_reg,
+			    void *spi_tc_reg,
+			    void *spi_bcc_reg)
 {
 	u8 wait_for_completion_cmd[2];
 	u8 *backup_buf;
 	u32 bufsize;
+	u32 poll_count = 0;
 
 	while (1) {
 		u32 code = (buf[0] << 8) | buf[1];
 
 		/* End of data */
 		if (code == 0)
-			return;
+			return 0;
 
 		if (code == 0xFFFF) {
 			/* Wait for completion, part 1 */
@@ -178,8 +181,11 @@ void spi_batch_data_transfer(u8   *buf,
 			buf = backup_buf;
 			if (wait_for_completion_cmd[1] & 1) {
 				/* Still busy */
+				if (++poll_count >= SPI_STATUS_POLL_LIMIT)
+					return 1;
 				continue;
 			}
+			poll_count = 0;
 			/* Advance to the next code */
 			buf = backup_buf + 2;
 		}
